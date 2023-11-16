@@ -64,6 +64,30 @@ def get_square(x_pos, y_pos):
         for i in range(4):
             if i * square_width <= x_pos < (i + 1) * square_width and j * square_height <= y_pos < (j + 1) * square_height:
                 return (i + 1, j + 1)  # Object is in the square with coordinates (i+1, j+1)
+num_rows = 2
+num_cols = 2   
+def get_square_and_overlap_percentage(x_pos, y_pos, radius):
+    square_width = width // num_cols
+    square_height = height // num_rows
+
+    for j in range(num_rows):
+        for i in range(num_cols):
+            if i * square_width <= x_pos < (i + 1) * square_width and j * square_height <= y_pos < (j + 1) * square_height:
+                # Calculate overlap area with the square within the boundaries
+                overlap_x1 = max(i * square_width, x_pos - radius)
+                overlap_x2 = min((i + 1) * square_width, x_pos + radius)
+                overlap_y1 = max(j * square_height, y_pos - radius)
+                overlap_y2 = min((j + 1) * square_height, y_pos + radius)
+
+                overlap_area = max(0, min(overlap_x2, (i + 1) * square_width) - max(overlap_x1, i * square_width)) * \
+                            max(0, min(overlap_y2, (j + 1) * square_height) - max(overlap_y1, j * square_height))
+                object_area = np.pi * radius**2  # Total area of the object (circle)
+
+                # Calculate overlap percentage
+                overlap_percentage = (overlap_area / object_area) * 100 if object_area > 0 else 0
+
+                return (i + 1, j + 1), min(overlap_percentage, 100)  # Object is in square with coordinates (i+1, j+1) and maximum 100% overlap
+    
 # Calibration
 cv2.namedWindow("Webcam Calibration")
 cv2.setMouseCallback("Webcam Calibration", mouse_callback)
@@ -115,6 +139,7 @@ def transformCoordinates(x, y):
 # Main loop
 start = True
 while start:
+    
     if rectBalloon.y<(width/10*5):
         rectBomb.x=10000
         rectBomb.y=10000
@@ -141,38 +166,40 @@ while start:
         upper_yellow = np.array([40, 255, 255])
         mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        try:
+            if len(contours) > 0:
+                max_contour = max(contours, key=cv2.contourArea)
+                (x, y), radius = cv2.minEnclosingCircle(max_contour)
+                x, y, radius = int(x), int(y), int(radius)
+                print(x,y)
+                if radius > 5:
+                    cv2.circle(img, (x, y), radius, (0, 255, 255), 2)
 
-        if len(contours) > 0:
-            max_contour = max(contours, key=cv2.contourArea)
-            (x, y), radius = cv2.minEnclosingCircle(max_contour)
-            x, y, radius = int(x), int(y), int(radius)
-            print(x,y)
-            if radius > 5:
-                cv2.circle(img, (x, y), radius, (0, 255, 255), 2)
-
-                # Apply the calibration transformation to the yellow ball coordinates
-                x_transformed, y_transformed = transformCoordinates(x, y)
-
-                # Get the square where the object is located
-                object_square = get_square(x_transformed, y_transformed)
-
-                # Print or use the object_square variable to indicate the square
-                print(f"Object is in square: {object_square}")
-                #print(transformCoordinates(x, y))
-                #print(x_transformed,y_transformed)
-                # Check if the transformed yellow ball collides with the balloon
-                if yellowBallCollidesBalloon(x_transformed, y_transformed, radius, rectBalloon):
+                    # Apply the calibration transformation to the yellow ball coordinates
+                    x_transformed, y_transformed = transformCoordinates(x, y)
                     
-                    rectBomb.x=rectBalloon.x
-                    rectBomb.y=rectBalloon.y
-                    #time.sleep(0.5)
-                    sound_file_path = './Resources/eyval.mp3'
-                    play_sound_threaded(sound_file_path)
-                    balloonBurst()
+                    # Get the square coordinates and overlap percentage where the object is located
+                    object_square, overlap_percentage = get_square_and_overlap_percentage(x_transformed, y_transformed, radius)
 
-                    
-                    score += 10
-                    speed += 0.3
+                    # Print or use the object_square and overlap_percentage variables
+                    print(f"Object is in square: {object_square} with {overlap_percentage:.2f}% overlap")
+                    #print(transformCoordinates(x, y))
+                    #print(x_transformed,y_transformed)
+                    # Check if the transformed yellow ball collides with the balloon
+                    if yellowBallCollidesBalloon(x_transformed, y_transformed, radius, rectBalloon):
+                        
+                        rectBomb.x=rectBalloon.x
+                        rectBomb.y=rectBalloon.y
+                        #time.sleep(0.5)
+                        sound_file_path = './Resources/eyval.mp3'
+                        play_sound_threaded(sound_file_path)
+                        balloonBurst()
+
+                        
+                        score += 10
+                        speed += 0.3
+        except:
+            print('error')
                     
 
         rectBalloon.y -= speed
